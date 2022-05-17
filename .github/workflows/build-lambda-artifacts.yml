@@ -123,7 +123,8 @@ jobs:
         working-directory: ${{ inputs.artifacts-dir }}
       - name: test-zips
         run: |
-          LAYER_ZIPS=$(ls ${{ inputs.artifacts-dir }})
+          LAYER_ZIPS=$(ls)
           for zip in ${LAYER_ZIPS[@]}; do
             unzip -t $zip
           done
+        working-directory: ${{ inputs.artifacts-dir }}
