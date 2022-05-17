@@ -63,7 +63,6 @@ jobs:
 
           cd ..
           zip -g "$FUNCTION.zip" "$FUNCTION.py"
-          ls
       - name: upload-artifacts
         uses: actions/upload-artifact@v3
         with:
@@ -110,13 +109,8 @@ jobs:
     runs-on: ubuntu-latest
     needs: [build-function-artifacts, build-layer-artifacts]
     steps:
-      # - name: create-artifacts-dir
-      #   run: |
-      #     mkdir -p ${{ inputs.artifacts-dir }}
       - name: download-artifacts
         uses: actions/download-artifact@v3
-        # with:
-        #   path: ${{ inputs.artifacts-dir }}
       - name: Display structure of downloaded files
         run: ls -R
         working-directory: ${{ inputs.artifacts-dir }}
@@ -125,6 +119,6 @@ jobs:
           LAYER_ZIPS=($(ls *.zip | tr "\n" " "))
           for zip in "${LAYER_ZIPS[@]}"; do 
             echo "testing: $zip"
-            unzip -t $zip
+            unzip -tq $zip
           done
         working-directory: ${{ inputs.artifacts-dir }}
