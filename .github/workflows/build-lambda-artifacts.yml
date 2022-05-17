@@ -110,21 +110,21 @@ jobs:
     runs-on: ubuntu-latest
     needs: [build-function-artifacts, build-layer-artifacts]
     steps:
-      - name: create-artifacts-dir
-        run: |
-          mkdir -p ${{ inputs.artifacts-dir }}
+      # - name: create-artifacts-dir
+      #   run: |
+      #     mkdir -p ${{ inputs.artifacts-dir }}
       - name: download-artifacts
         uses: actions/download-artifact@v3
-        with:
-          path: ${{ inputs.artifacts-dir }}
+        # with:
+        #   path: ${{ inputs.artifacts-dir }}
       - name: Display structure of downloaded files
-        if: ${{ inputs.download-artifacts }} == true
         run: ls -R
         working-directory: ${{ inputs.artifacts-dir }}
       - name: test-zips
         run: |
-          LAYER_ZIPS=$(ls)
-          for zip in ${LAYER_ZIPS[@]}; do
+          LAYER_ZIPS=$(ls *.zip)
+          for zip in "${LAYER_ZIPS[@]}"; do 
+            echo "testing: $zip"
             unzip -t $zip
           done
         working-directory: ${{ inputs.artifacts-dir }}

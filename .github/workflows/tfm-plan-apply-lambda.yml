@@ -149,11 +149,11 @@ jobs:
       - name: create-artifacts-dir
         run: |
           mkdir -p ${{ inputs.artifacts-dir }}
+
       - name: download-artifacts
         if: ${{ inputs.download-artifacts }} == true
         uses: actions/download-artifact@v3
-        with:
-          path: ${{ inputs.artifacts-dir }}
+
       - name: Display structure of downloaded files
         if: ${{ inputs.download-artifacts }} == true
         run: ls -R
