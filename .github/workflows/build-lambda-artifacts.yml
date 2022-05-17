@@ -1,0 +1,129 @@
+name: build lambda artifacts
+on:
+  workflow_call:
+    inputs:
+      lambda-function-name:
+        description: "Lambda function name"
+        required: true
+        default: changeme
+        type: string
+      lambda-src-dir:
+        description: "Lambda source code folder"
+        required: false
+        default: src
+        type: string
+      lambda-layers-dir:
+        description: "Lambda layers folder"
+        required: false
+        default: layer_packages
+        type: string
+      lambda-layers:
+        description: "Lambda layers, quoted comma separated list, no brackets, no spaces e.g. 'xray,yray'"
+        required: false
+        default: none
+        type: string
+      python-runtime-ver:
+        description: "Python runtime version"
+        required: false
+        default: "3.8.12"
+        type: string
+      artifacts-dir:
+        description: "Artifacts folder"
+        required: false
+        default: artifacts
+        type: string
+
+jobs:
+  ## BUILD ARtIFACTS
+  build-function-artifacts:
+    runs-on: ubuntu-latest
+    env:
+      FUNCTION: ${{ inputs.lambda-function-name }}
+      SRC_DIR: ${{ inputs.lambda-src-dir }}
+    steps:
+      - name: Checkout the repository
+        id: checkout
+        uses: actions/checkout@v3
+      - name: Setup python caching
+        id: cache
+        uses: actions/setup-python@v3
+        with:
+          python-version: ${{ inputs.python-runtime-ver }}
+          cache: "pip"
+      - name: install-packages
+        run: |
+          cd "$SRC_DIR"
+          mkdir -p packages
+          pip3 install -r requirements.txt --target packages -q
+      - name: create-function-artifact
+        id: create-function-artifact
+        run: |
+          cd "$SRC_DIR/packages"
+          zip -rq ../"$FUNCTION.zip" .
+
+          cd ..
+          zip -g "$FUNCTION.zip" "$FUNCTION.py"
+          ls
+      - name: upload-artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: artifacts
+          path: |
+            ${{ env.SRC_DIR }}/${{ env.FUNCTION }}.zip
+
+  build-layer-artifacts:
+    runs-on: ubuntu-latest
+    if: ${{ inputs.lambda-layers-dir }} != 'none'
+    env:
+      LAYER_DIR: ${{ inputs.lambda-layers-dir }}
+      LAYERS: ${{ inputs.lambda-layers }}
+    steps:
+      - name: Checkout the repository
+        id: checkout
+        uses: actions/checkout@v3
+      - name: Setup python caching
+        id: cache
+        uses: actions/setup-python@v3
+        with:
+          python-version: ${{ inputs.python-runtime-ver }}
+          cache: "pip"
+      - name: create-layer-artifacts
+        run: |
+          LAYERS=$(echo $LAYERS | tr ',' ' ')
+          cd "$LAYER_DIR"
+          for LAYER in "${LAYERS[@]}"; do
+            mkdir -p "${LAYER}-packages/python"
+            pip3 install -r "${LAYER}-requirements.txt" --no-deps --target "${LAYER}-packages/python" -q
+
+            cd "${LAYER}-packages"
+            zip -rq ../"${LAYER}-packages.zip" .
+          done
+
+      - name: upload-artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: artifacts
+          path: |
+            ${{ env.LAYER_DIR }}/*-packages.zip
+
+  test-artifacts:
+    runs-on: ubuntu-latest
+    needs: [build-function-artifacts, build-layer-artifacts]
+    steps:
+      - name: create-artifacts-dir
+        run: |
+          mkdir -p ${{ inputs.artifacts-dir }}
+      - name: download-artifacts
+        uses: actions/download-artifact@v3
+        with:
+          path: ${{ inputs.artifacts-dir }}
+      - name: Display structure of downloaded files
+        if: ${{ inputs.download-artifacts }} == true
+        run: ls -R
+        working-directory: ${{ inputs.artifacts-dir }}
+      - name: test-zips
+        run: |
+          LAYER_ZIPS=$(ls ${{ inputs.artifacts-dir }})
+          for zip in ${LAYER_ZIPS[@]}; do
+            unzip -t $zip
+          done

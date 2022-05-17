@@ -1,0 +1,164 @@
+name: terraform validate plan
+
+on:
+  workflow_call:
+    inputs:
+      configuration-dir:
+        description: "Name of the terraform configuration directory in repository root"
+        required: true
+        default: "configuration"
+        type: string
+      terraform-dir:
+        description: "Name of the terraform directory in repository root"
+        required: true
+        default: "terraform"
+        type: string
+      aws-region:
+        description: "AWS Default Region"
+        required: false
+        default: "eu-west-1"
+        type: string
+      backend-tfvars-suffix:
+        description: "Backend tfvar file suffix"
+        required: false
+        default: "backend.tfvars"
+        type: string
+      tfvars-suffix:
+        description: "Tfvar file suffix"
+        required: false
+        default: "tfvars"
+        type: string
+      debug:
+        description: "Enable to get additional output"
+        required: false
+        default: false
+        type: boolean
+
+    secrets:
+      aws-access-key-id:
+        description: "AWS Access Key Id - cicd-automation user"
+        required: true
+      aws-secret-access-key:
+        description: "AWS Secret Access Key - cicd-automation user"
+        required: true
+      aws-cicd-automation-role-external-id:
+        description: "External ID used when assuming CICD automation role"
+        required: true
+      aws-cicd-automation-github-role:
+        description: "CICD Automation Role for Github actions"
+        required: true
+      github-app-id:
+        description: "This is the ID of the GitHub App"
+        required: false
+      github-installation-id:
+        description: "This is the ID of the GitHub App installation"
+        required: false
+      github-pem-file:
+        description: "This is the contents of the GitHub App private key PEM file"
+        required: false
+
+env:
+  TF_VAR_github_app_id: ${{ secrets.github-app-id }}
+  TF_VAR_github_installation_id: ${{ secrets.github-installation-id }}
+  TF_VAR_github_pem_file: ${{ secrets.github-pem-file }}
+
+jobs:
+  ## GET CHANGED FILES
+  ## Get list of files that have changed
+  get-changes:
+    name: get-changes
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout the repository
+        id: checkout
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      - uses: dorny/paths-filter@v2
+        id: changes
+        with:
+          list-files: shell
+          filters: |
+            cfg:
+              - "${{ inputs.configuration-dir }}/**"
+            tfm:
+              - "${{ inputs.terraform-dir }}/**"
+      - name: Get changed files
+        id: get-changed-files
+        run: |
+          changed_cfg_files="${{ steps.changes.outputs.cfg_files }}"
+          tfm_changed="${{ steps.changes.outputs.tfm }}"
+          cfg_changed="${{ steps.changes.outputs.cfg }}"
+          matrix="{\"prefix\":[]}"
+
+          if [ "$tfm_changed" == "true" ]; then
+              files=$(find ${{ inputs.configuration-dir }} -type f | tr "\n" " ")
+          else 
+            files="$(echo $changed_cfg_files)"
+          fi
+
+          if [ ${{ inputs.debug }} ]; then echo "files: $files"; fi
+
+          for file in $files; do
+              if [[ "$file" != *.${{ inputs.backend-tfvars-suffix }} ]]; then
+                  prefix="${file/.${{ inputs.tfvars-suffix }}/}"
+
+                  if [ ${{ inputs.debug }} ]; then echo "prefix: $prefix"; fi
+                  
+                  matrix=$( echo $matrix | jq -c --arg prefix "$prefix" '.prefix += [$prefix]')
+                  
+                  if [ ${{ inputs.debug }} ]; then echo "matrix: $matrix"; fi
+              fi
+          done
+
+          if [ "$tfm_changed" == "false" ] && [ "$cfg_changed" == "false" ]; then matrix="none"; fi
+          echo "matrix: $matrix"
+          echo "::set-output name=matrix::$matrix"
+    outputs:
+      matrix: ${{ steps.get-changed-files.outputs.matrix }}
+
+  plan-deployment:
+    runs-on: ubuntu-latest
+    needs: [get-changes]
+    if: ${{ needs.get-changed-files.outputs.matrix }} != 'none'
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.get-changes.outputs.matrix) }}
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      - name: cleanup .terraform folder
+        run: rm -f .terraform
+      - name: update version in tfvars
+        run: |
+          LATEST_TAG=$(/usr/bin/git describe --abbrev=0 --tags)
+          if [ -z "$LATEST_TAG" ]; then 
+            SERVICE_VERSION="v0.0.0"
+          else
+            SERVICE_VERSION="$LATEST_TAG"
+          fi
+          TFVARS="${{ matrix.prefix }}.${{ inputs.tfvars-suffix }}"
+          sed -i "s#<service-version>#$SERVICE_VERSION#g" $TFVARS
+      - name: Configure AWS Credentials for cicd-automation
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-region: ${{ inputs.aws-region }}
+          mask-aws-account-id: "yes"
+          role-to-assume: ${{ secrets.aws-cicd-automation-github-role }}
+          role-duration-seconds: 1200
+          role-skip-session-tagging: true
+      - name: terraform plan
+        run: |
+          prefix=${{ matrix.prefix }}
+
+          echo "Running terraform init for $product product"
+          terraform init --backend-config="../${prefix}.backend.tfvars" 
+
+          echo "Running terraform plan for $product"
+          terraform plan --var-file="../${prefix}.tfvars" \
+            -var "aws_role_external_id=${{ secrets.aws-cicd-automation-role-external-id }}"
+        working-directory: ${{ inputs.terraform-dir }}

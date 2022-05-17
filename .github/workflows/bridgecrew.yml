@@ -1,9 +1,17 @@
-steps:
+name: bridgecrew scan
+
+on:
+  workflow_call:
+
+jobs:
+  bridgecrew-scan:
+    runs-on: ubuntu-latest
+    steps:
       - name: Checkout repo
         uses: actions/checkout@v2
 
-      - name: Run Bridgecrew 
+      - name: Run Bridgecrew
         id: Bridgecrew
-        uses: bridgecrewio/bridgecrew-action@master 
+        uses: bridgecrewio/bridgecrew-action@master
         with:
           api-key: ${{ secrets.BC_API_KEY }}

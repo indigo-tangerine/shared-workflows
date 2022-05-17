@@ -1,0 +1,82 @@
+# This workflow uses actions that are not certified by GitHub.
+# They are provided by a third-party and are governed by
+# separate terms of service, privacy policy, and support
+# documentation.
+
+name: code scanning - snyk
+
+on:
+  workflow_call:
+    secrets:
+      snyk-token:
+        description: Snyk API token
+        required: true
+jobs:
+    get-changes:
+    name: get-changes
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout the repository
+        id: checkout
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      - uses: dorny/paths-filter@v2
+        id: changes
+        with:
+          list-files: shell
+          filters: |
+            tfm:
+              - "./**/*.tf"
+      - name: Get changed files
+        id: get-changed-files
+        run: |
+          tfm_changed="${{ steps.changes.outputs.tfm }}"
+
+          if [ "$tfm_changed" == "true" ]; then
+              tfm_files="[\"$(echo ${{ steps.changes.outputs.tfm_files }}  | sed -e 's/ /\", \"/g' )\"]"
+          fi
+
+          if [ "$tfm_changed" == "false" ]; then 
+            tfm_matrix="none"
+          else
+            tfm_matrix=$tfm_files
+          fi
+
+          echo "tfm_matrix: $tfm_matrix"
+          echo "::set-output name=tfm_matrix::$tfm_matrix"
+    outputs:
+      tfm_matrix: ${{ steps.get-changed-files.outputs.tfm_matrix }}
+
+  snyk-scan:
+    runs-on: ubuntu-latest
+    needs: [get-changes]
+    if: ${{ needs.get-changed-files.outputs.tfm_matrix }} != 'none' 
+    permissions:
+      contents: read # for actions/checkout to fetch code
+      security-events: write # for github/codeql-action/upload-sarif to upload SARIF results
+    strategy:
+      fail-fast: false
+      matrix:
+        files: ${{ fromJSON(needs.get-changes.outputs.tfm_matrix) }}
+    steps:
+      - uses: actions/checkout@v3
+      - name: Run Snyk to check configuration files for security issues
+        # Snyk can be used to break the build when it detects security issues.
+        # In this case we want to upload the issues to GitHub Code Scanning
+        continue-on-error: true
+        uses: snyk/actions/iac@14818c4695ecc4045f33c9cee9e795a788711ca4
+        env:
+          # In order to use the Snyk Action you will need to have a Snyk API token.
+          # More details in https://github.com/snyk/actions#getting-your-snyk-token
+          # or you can signup for free at https://snyk.io/login
+          SNYK_TOKEN: ${{ secrets.snyk-token }}
+        with:
+          # Add the path to the configuration file that you would like to test.
+          # For example `deployment.yaml` for a Kubernetes deployment manifest
+          # or `main.tf` for a Terraform configuration file
+          file: ${{ matrix.files }}
+      - name: Upload result to GitHub Code Scanning
+        uses: github/codeql-action/upload-sarif@v2
+        with:
+          sarif_file: snyk.sarif

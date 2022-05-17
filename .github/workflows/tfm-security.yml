@@ -1,0 +1,44 @@
+## TFM SECURITY SCAN
+on:
+  workflow_call:
+    inputs:
+      terraform-dir:
+        description: "Name of the terraform directory in repository root"
+        required: false
+        default: "."
+        type: string
+      enable-tfsec:
+        description: "Enable / disable running a security scan using tfsec"
+        required: false
+        default: true
+        type: boolean
+      enable-checkov:
+        description: "Enable / disable running a security scan using checkov"
+        required: false
+        default: false
+        type: boolean
+
+jobs:
+  tfsec-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: run tfsec scan
+        uses: aquasecurity/tfsec-action@v1.0.0
+        with:
+          working_directory: ${{ inputs.terraform-dir }}
+  checkov-scan:
+    runs-on: ubuntu-latest
+    if: ${{ inputs.enable-checkov  == 'true' }}
+    steps:
+      - uses: actions/checkout@v3
+      - name: Run Checkov scan
+        id: checkov
+        uses: bridgecrewio/checkov-action@master
+        with:
+          directory: ${{ inputs.terraform-dir }}
+          framework: terraform
+          quiet: true # optional: display only failed checks
+          output_format: sarif # optional: the output format, one of: cli, json, junitxml, github_failed_only, or sarif. Default: sarif
+          download_external_modules: true # optional: download external terraform modules from public git repositories and terraform registry
+          log_level: WARNING # optional: set log level. Default WARNING

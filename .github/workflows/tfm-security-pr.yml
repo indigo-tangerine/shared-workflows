@@ -1,0 +1,28 @@
+## TFM SECURITY SCAN
+on:
+  workflow_call:
+    inputs:
+      terraform-dir:
+        description: "Name of the terraform directory in repository root"
+        required: false
+        default: "."
+        type: string
+      enable-tfsec:
+        description: "Enable / disable running a security scan using tfsec"
+        required: false
+        default: true
+        type: boolean
+
+jobs:
+  tfsec-pr-scan:
+    runs-on: ubuntu-latest
+    if: ${{ needs.inputs.enable-tfsec }} == 'true'
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+      - name: tfsec
+        uses: aquasecurity/tfsec-pr-commenter-action@main
+        with:
+          github_token: ${{ github.token }}
+          working_directory: ${{ inputs.terraform-dir }}

@@ -1,0 +1,64 @@
+name: terraform validate
+
+on:
+  workflow_call:
+    inputs:
+      terraform-dir:
+        description: "Name of the terraform directory in repository root"
+        required: true
+        default: "terraform"
+        type: string
+      use-backend:
+        description: "Use backend config during validation"
+        required: false
+        default: "false"
+        type: string
+    secrets:
+      github-app-id:
+        description: "This is the ID of the GitHub App"
+        required: false
+      github-installation-id:
+        description: "This is the ID of the GitHub App installation"
+        required: false
+      github-pem-file:
+        description: "This is the contents of the GitHub App private key PEM file"
+        required: false
+
+env:
+  TF_VAR_github_app_id: ${{ secrets.github-app-id }}
+  TF_VAR_github_installation_id: ${{ secrets.github-installation-id }}
+  TF_VAR_github_pem_file: ${{ secrets.github-pem-file }}
+  TFLINT_VER: "0.13.3"
+
+jobs:
+  ## VALIDATION
+  validate-iac:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: validate-terraform
+        run: |
+          cd ${{ inputs.terraform-dir }}
+          terraform init -backend=${{ inputs.use-backend }}
+          terraform validate
+      - name: setup tflint
+        uses: terraform-linters/setup-tflint@v1
+        with:
+          tflint_version: latest
+      - name: configure tflint plugins
+        run: |
+          TFLINT_CFG=".tflint.hcl"
+          if [ -f "$TFLINT_CFG" ]; then
+            rm "$TFLINT_CFG"
+          fi
+
+          touch "$TFLINT_CFG"
+          echo -e "  plugin "aws" {" >> "$TFLINT_CFG"
+          echo -e "  enabled = true" >> "$TFLINT_CFG"
+          echo -e "  version = \"$TFLINT_VER\"" >> "$TFLINT_CFG"
+          echo -e "  source  = \"github.com/terraform-linters/tflint-ruleset-aws\"\n}" >> "$TFLINT_CFG"
+          cat "$TFLINT_CFG"
+      - name: init & run tflint
+        run: |
+          tflint --init
+          tflint -f compact

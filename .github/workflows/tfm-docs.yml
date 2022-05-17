@@ -1,0 +1,53 @@
+name: terraform docs
+
+on:
+  workflow_call:
+    inputs:
+      working-dir:
+        description: "Working directory - search root for terraform files"
+        required: false
+        default: "."
+        type: string
+      output-file:
+        description: "Defaults to README.md"
+        required: false
+        default: "README.md"
+        type: string
+      output-method:
+        description: "Format to generate content"
+        required: false
+        default: "inject"
+        type: string
+      indention:
+        description: "Indention level of Markdown sections"
+        required: false
+        default: 3
+        type: number
+      git-push:
+        description: "If true it will commit and push the changes"
+        required: false
+        default: true
+        type: boolean
+      git-commit-msg:
+        description: "Git commit message"
+        required: false
+        default: "[tfm-docs][skip ci] - updating terraform docs"
+        type: string
+
+jobs:
+  # CREATE TFM DOCS
+  tfm-docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+      - name: Render terraform docs inside the README.md and push changes back to PR branch
+        uses: terraform-docs/gh-actions@v0.11.0
+        with:
+          find-dir: ${{ inputs.working-dir }}
+          output-file: ${{ inputs.output-file  }}
+          output-method: ${{ inputs.output-method }}
+          git-push: ${{ inputs.git-push }}
+          indention: ${{ inputs.indention }}
+          git-commit-message: ${{ inputs.git-commit-msg }}

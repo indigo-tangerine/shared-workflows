@@ -1,0 +1,27 @@
+name: update-changelog
+
+on:
+  workflow_call:
+    inputs:
+      use_v_prefix:
+        description: "Prefix tags with 'v'"
+        required: false
+        default: true
+        type: boolean
+    secrets:
+      access_token:
+        description: "github_token"
+
+jobs:
+  update-changelog:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.access_token }}
+      - uses: BobAnkh/auto-generate-changelog@master
+        with:
+          ACCESS_TOKEN: ${{ secrets.access_token }}
+          COMMIT_MESSAGE: "[skip ci] docs(CHANGELOG): update release notes"
+          TYPE: "feat:Feature,fix:Bug Fixes,docs:Documentation,refactor:Refactor,perf:Performance Improvements"
