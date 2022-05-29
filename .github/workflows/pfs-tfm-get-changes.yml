@@ -1,0 +1,69 @@
+name: terraform get changes
+
+on:
+  workflow_call:
+    inputs:
+      configuration-dir:
+        description: "Name of the terraform configuration directory in repository root"
+        required: true
+        default: "configuration"
+        type: string
+      terraform-dir:
+        description: "Name of the terraform directory in repository root"
+        required: true
+        default: "terraform"
+        type: string
+
+jobs:
+  ## GET CHANGED FOLDERS
+  ## Get list of folders that have changed
+  get-changes:
+    name: get-changes
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout the repository
+        id: checkout
+        uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
+      - uses: dorny/paths-filter@v2
+        id: changes
+        with:
+          list-files: shell
+          filters: |
+            configuration:
+              - "${{ inputs.configuration-dir }}/**"
+            terraform_definition:
+              - "${{ inputs.terraform-dir }}/**"
+      - name: Get folders
+        id: get-folders
+        run: |
+
+          echo "tfm changes ${{ steps.changes.outputs.terraform_definition }}"  
+          echo "cfg changes ${{ steps.changes.outputs.configuration }}"
+
+          if ${{ steps.changes.outputs.terraform_definition }}; then
+            FLDRS=$(find . -type d -maxdepth 2 -mindepth 2 -not -name branch | tr ' ' ',')
+
+          elif ${{ steps.changes.outputs.configuration }}; then
+            FLDRS=$( echo "${{steps.changes.outputs.configuration_files}}" | tr ' ' ',' )
+            FLDRS=${FLDRS#*/}
+            FLDRS=${FLDRS%/*}
+          fi
+          echo $FLDRS
+
+          matrix="{\"folders\":[]}"
+
+          for folder in $(echo $FLDRS | tr ',' '\n'); do
+            folder=${folder/.\//}
+            matrix=$( echo $matrix | jq -c --arg folder "$folder" '.folders += [$folder]')
+          done
+
+          echo "Folders to run: $matrix"
+          echo "::set-output name=matrix::$matrix"
+        working-directory: ${{ inputs.configuration-dir }}
+    outputs:
+      configuration: ${{ steps.changes.outputs.configuration }}
+      configuration_files: ${{ steps.changes.outputs.configuration_files }}
+      terraform_definition: ${{ steps.changes.outputs.terraform_definition }}
+      matrix: ${{ steps.get-folders.outputs.matrix }}

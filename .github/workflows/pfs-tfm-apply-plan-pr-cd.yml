@@ -1,0 +1,188 @@
+name: terraform plan apply - pr cd
+
+on:
+  workflow_call:
+    inputs:
+      configuration-dir:
+        description: "Name of the terraform configuration directory in repository root"
+        required: true
+        default: "configuration"
+        type: string
+      terraform-dir:
+        description: "Name of the terraform directory in repository root"
+        required: true
+        default: "terraform"
+        type: string
+      modules-dirs:
+        description: "Paths of the modules directories e.g. modules/s3 (comma separated)"
+        required: false
+        default: ""
+        type: string
+      enable-tfsec:
+        description: "Enable / disable running a security scan using tfsec"
+        required: true
+        default: false
+        type: boolean
+      aws-region:
+        description: "AWS Default Region"
+        required: true
+        default: "eu-west-1"
+        type: string
+      filename-tfvars:
+        description: "Filename of tfvars file"
+        required: true
+        default: "main.tfvars"
+        type: string
+      filename-tfvars-backend:
+        description: "Filename of backend tfvars file"
+        required: true
+        default: "main.backend.tfvars"
+        type: string
+      filename-version-json:
+        description: "Filename of version json file"
+        required: false
+        default: "version.json"
+        type: string
+    secrets:
+      aws-access-key-id:
+        description: "AWS Access Key Id - this should normally be for cor-cicd-automation user"
+        required: true
+      aws-secret-access-key:
+        description: "AWS Secret Access Key - this should normally be for cor-cicd-automation user"
+        required: true
+      cicd-github-repo-token:
+        description: "CICD GitHub repository token for writing back tags"
+        required: true
+
+jobs:
+  ## SEMVERSIONER
+  semver-changelog:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.cicd-github-repo-token }}
+      - uses: ohpensource/platform-cicd/actions/git/generate-version-and-release-notes@2.0.1.0
+        name: semver & changelog
+        with:
+          user-email: "github-svc@ohpen.com"
+          user-name: "GitHub Actions"
+      - id: semver
+        run: |
+          if [ ! -f "${{ inputs.filename-version-json }}" ]; then
+            echo "{ \"version\": \"0.0.0.0\" }" > ${{ inputs.filename-version-json }}
+          fi
+          echo "::set-output name=service-version::$(cat ./${{ inputs.filename-version-json }} | jq -r '.version')"
+    outputs:
+      service-version: ${{ steps.semver.outputs.service-version }}
+
+  ## GET CHANGED FOLDERS
+  ## Get list of folders that have changed
+  get-changes:
+    runs-on: ubuntu-latest
+    needs: [semver-changelog]
+    steps:
+      - name: Checkout the repository
+        id: checkout
+        uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
+      - uses: dorny/paths-filter@v2
+        id: changes
+        with:
+          list-files: shell
+          filters: |
+            configuration:
+              - "${{ inputs.configuration-dir }}/**"
+            terraform_definition:
+              - "${{ inputs.terraform-dir }}/**"
+      - name: Get folders
+        id: get-folders
+        run: |
+
+          echo "tfm changes ${{ steps.changes.outputs.terraform_definition }}"  
+          echo "cfg changes ${{ steps.changes.outputs.configuration }}"
+
+          if ${{ steps.changes.outputs.terraform_definition }}; then
+            FLDRS=$(find . -type d -maxdepth 2 -mindepth 2 -not -name branch | tr ' ' ',')
+
+          elif ${{ steps.changes.outputs.configuration }}; then
+            FLDRS=$( echo "${{steps.changes.outputs.configuration_files}}" | tr ' ' ',' )
+            FLDRS=${FLDRS#*/}
+            FLDRS=${FLDRS%/*}
+          fi
+          echo $FLDRS
+
+          matrix="{\"folders\":[]}"
+
+          for folder in $(echo $FLDRS | tr ',' '\n'); do
+            folder=${folder/.\//}
+            matrix=$( echo $matrix | jq -c --arg folder "$folder" '.folders += [$folder]')
+          done
+
+          echo "Folders to run: $matrix"
+          echo "::set-output name=matrix::$matrix"
+        working-directory: ${{ inputs.configuration-dir }}
+    outputs:
+      configuration: ${{ steps.changes.outputs.configuration }}
+      configuration_files: ${{ steps.changes.outputs.configuration_files }}
+      terraform_definition: ${{ steps.changes.outputs.terraform_definition }}
+      matrix: ${{ steps.get-folders.outputs.matrix }}
+
+  ## TFM PLAN FOR CHANGED FOLDERS
+  tfm-plan:
+    runs-on: ubuntu-latest
+    needs: [get-changes]
+    if: ${{needs.get-changes.outputs.terraform_definition}} == 'true' || ${{needs.get-changes.outputs.configuration}} == 'true'
+    strategy:
+      fail-fast: false
+      matrix: ${{fromJSON(needs.get-changes.outputs.matrix)}}
+    steps:
+      - uses: actions/checkout@v2
+      - name: update version in tfvars
+        run: |
+          SERVICE_VERSION=${{ needs.semver-changelog.outputs.service-version }}
+          TFVARS="${{ inputs.configuration-dir }}/${{ matrix.folders }}/${{ inputs.filename-tfvars }}"
+          sed -i "s#<service-version>#$SERVICE_VERSION#g" $TFVARS
+          echo "Cleaning up .terraform folder"
+          rm -rf .terraform
+      - uses: ohpensource/platform-cicd/actions/terraform/tfm-plan@2.3.7.0
+        name: terraform plan
+        with:
+          region: ${{ inputs.aws-region }}
+          access-key: ${{ secrets.aws-access-key-id }}
+          secret-key: ${{ secrets.aws-secret-access-key }}
+          terraform-folder: ${{ inputs.terraform-dir }}
+          backend-configuration: "${{ inputs.configuration-dir }}/${{ matrix.folders }}/${{ inputs.filename-tfvars-backend }}"
+          terraform-var-file: "${{ inputs.configuration-dir }}/${{ matrix.folders }}/${{ inputs.filename-tfvars }}"
+          terraform-plan-file: tfm.plan
+      - name: upload tfm.plan
+        uses: actions/upload-artifact@v2
+        with:
+          name: tfm-plan
+          path: tfm.plan
+          retention-days: 1
+  tfm-apply:
+    runs-on: ubuntu-latest
+    needs: [tfm-plan, get-changes]
+    if: ${{needs.get-changes.outputs.terraform_definition}} == 'true' || ${{needs.get-changes.outputs.configuration}} == 'true'
+    strategy:
+      fail-fast: false
+      matrix: ${{fromJSON(needs.get-changes.outputs.matrix)}}
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions/download-artifact@v2
+        name: download tfm.plan
+        with:
+          name: tfm-plan
+      - uses: ohpensource/platform-cicd/actions/terraform/tfm-apply@2.3.7.0
+        name: terraform apply
+        with:
+          region: ${{ inputs.aws-region }}
+          access-key: ${{ secrets.aws-access-key-id }}
+          secret-key: ${{ secrets.aws-secret-access-key }}
+          terraform-folder: ${{ inputs.terraform-dir }}
+          backend-configuration: "${{ inputs.configuration-dir }}/${{ matrix.folders }}/${{ inputs.filename-tfvars-backend }}"
+          terraform-plan-file: tfm.plan
+          terraform-outputs-file: "${{ inputs.configuration-dir }}/${{ matrix.folders }}/outputs.json }}"

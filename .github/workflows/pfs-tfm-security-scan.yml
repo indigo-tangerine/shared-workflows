@@ -1,0 +1,32 @@
+name: terraform security scan
+
+on:
+  workflow_call:
+    inputs:
+      terraform-dir:
+        description: "Name of the terraform directory in repository root"
+        required: true
+        default: "terraform"
+        type: string
+
+jobs:
+  tfsec-pr:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+      - name: tfsec
+        uses: aquasecurity/tfsec-pr-commenter-action@main
+        with:
+          github_token: ${{ github.token }}
+          working_directory: ${{ inputs.terraform-dir }}
+  tfsec:
+    name: tfsec
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: run tfsec
+        uses: aquasecurity/tfsec-action@v1.0.0
+        with:
+          working_directory: ${{ inputs.terraform-dir }}

@@ -1,0 +1,33 @@
+name: terraform docs
+
+on:
+  workflow_call:
+    inputs:
+      terraform-dir:
+        description: "Name of the terraform directory in repository root"
+        required: true
+        default: "terraform"
+        type: string
+      module-dirs:
+        description: "Path of the terraform & modules directories e.g. terraform,modules/s3 (comma separated)"
+        required: false
+        default: "terraform/modules"
+        type: string
+
+jobs:
+  tfm-docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+      - name: Render terraform docs inside the README.md and push changes back to PR branch
+        uses: terraform-docs/gh-actions@v0.11.0
+        with:
+          working-dir: "${{ inputs.terraform-dir }},${{ inputs.module-dirs }}"
+          # find-dir: terraform/
+          output-file: README.md
+          output-method: inject
+          git-push: "true"
+          indention: 3
+          git-commit-message: "[tfm-docs][skip ci] - updating terraform docs"
