@@ -13,6 +13,11 @@ on:
         required: false
         default: "false"
         type: string
+      download-artifacts:
+        description: "Download artifacts"
+        required: false
+        default: false
+        type: boolean
     secrets:
       github-app-id:
         description: "This is the ID of the GitHub App"
@@ -36,6 +41,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
+      - name: download-artifacts
+        if: ${{ inputs.download-artifacts }} == true
+        uses: actions/download-artifact@v3
       - name: validate-terraform
         run: |
           cd ${{ inputs.terraform-dir }}
