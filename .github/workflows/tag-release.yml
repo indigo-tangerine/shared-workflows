@@ -8,6 +8,10 @@ on:
         required: false
         default: true
         type: boolean
+    outputs:
+      tag:
+        description: Release tag
+        value: ${{ jobs.tag-releases.outputs.tag }}
 
 jobs:
   tag-release:
