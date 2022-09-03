@@ -11,7 +11,10 @@ on:
     outputs:
       tag:
         description: Release tag
-        value: ${{ jobs.tag-release.outputs.tag }}
+        value: ${{ jobs.tag.outputs.tag }}
+      new_tag:
+        description: Release tag
+        value: ${{ jobs.tag.outputs.new_tag }}
 
 jobs:
   tag:
@@ -23,9 +26,10 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
       - name: Bump version and push tag
         id: bump_tag
-        uses: anothrNick/github-tag-action@1.36.0
+        uses: anothrNick/github-tag-action@1.39.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           WITH_V: ${{ inputs.use_v_prefix }}
     outputs:
       tag: ${{ steps.bump_tag.outputs.tag }}
+      new_tag: ${{ steps.bump_tag.outputs.new_tag }}
