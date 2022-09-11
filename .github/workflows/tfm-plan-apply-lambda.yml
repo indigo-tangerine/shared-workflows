@@ -113,12 +113,12 @@ jobs:
           matrix="{\"prefix\":[]}"
 
           if [ "$tfm_changed" == "true" ]; then
-              files=$(find ${{ inputs.configuration-dir }} -type f | tr "\n" " ")
-              tfm_files="[\"$(echo $changed_tfm_files  | sed -e 's/ /\", \"/g' )\"]"
+            files=$(find ${{ inputs.configuration-dir }} -type f | tr "\n" " ")
+            tfm_files="[\"$(echo $changed_tfm_files  | sed -e 's/ /\", \"/g' )\"]"
           elif [ "$cfg_changed" == "true" ]; then
             files="$(echo $changed_cfg_files)"
           elif [ "$src_changed" == "true" ]; then
-            files="$(echo $changed_src_files)"
+            files=$(find ${{ inputs.configuration-dir }} -type f | tr "\n" " ")
           else 
             echo "nothing changed"
             exit 0
