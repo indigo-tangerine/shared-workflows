@@ -133,7 +133,7 @@ jobs:
 
           tfm_matrix=$tfm_files
 
-          if [ "$tfm_changed" == "false" ] && [ "$cfg_changed" == "false" ]; then matrix="none"; fi
+          if [ "$tfm_changed" == "false" ] && [ "$cfg_changed" == "false" ] && [ "$src_changed" == "false" ]; then matrix="none"; fi
           if [ "$tfm_changed" == "false" ] ; then tfm_matrix="none"; fi
           if [ "$src_changed" == "true" ]; then tfm_matrix="source update"; fi
 
