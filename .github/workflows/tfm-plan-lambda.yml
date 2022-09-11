@@ -53,6 +53,11 @@ on:
         required: false
         default: artifacts
         type: string
+      source-dir:
+        description: "Source code folder"
+        required: false
+        default: src
+        type: string
 
     secrets:
       aws-access-key-id:
@@ -92,22 +97,31 @@ jobs:
               - "${{ inputs.configuration-dir }}/**"
             tfm:
               - "${{ inputs.terraform-dir }}/**/*.tf"
+            src:
+               - "${{ inputs.terraform-dir }}/**"
       - name: Get changed files
         id: get-changed-files
         run: |
           changed_cfg_files="${{ steps.changes.outputs.cfg_files }}"
           changed_tfm_files="${{ steps.changes.outputs.tfm_files }}"
+          changed_src_files="${{ steps.changes.outputs.src_files }}"
 
           tfm_changed="${{ steps.changes.outputs.tfm }}"
           cfg_changed="${{ steps.changes.outputs.cfg }}"
+          src_changed="${{ steps.changes.outputs.src }}"
 
           matrix="{\"prefix\":[]}"
 
           if [ "$tfm_changed" == "true" ]; then
               files=$(find ${{ inputs.configuration-dir }} -type f | tr "\n" " ")
               tfm_files="[\"$(echo $changed_tfm_files  | sed -e 's/ /\", \"/g' )\"]"
-          else 
+          elif [ "$cfg_changed" == "true" ]; then
             files="$(echo $changed_cfg_files)"
+          elif [ "$src_changed" == "true" ]; then
+            files="$(echo $changed_src_files)"
+          else 
+            echo "nothing changed"
+            exit 0
           fi
 
           for file in $files; do
@@ -121,6 +135,7 @@ jobs:
 
           if [ "$tfm_changed" == "false" ] && [ "$cfg_changed" == "false" ]; then matrix="none"; fi
           if [ "$tfm_changed" == "false" ] ; then tfm_matrix="none"; fi
+          if [ "$src_changed" == "true" ]; then tfm_matrix="source update"; fi
 
           echo "matrix: $matrix"
           echo "tfm_matrix: $tfm_matrix"
