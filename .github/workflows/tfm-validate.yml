@@ -33,7 +33,7 @@ env:
   TF_VAR_github_app_id: ${{ secrets.github-app-id }}
   TF_VAR_github_installation_id: ${{ secrets.github-installation-id }}
   TF_VAR_github_pem_file: ${{ secrets.github-pem-file }}
-  TFLINT_VER: "0.13.3"
+  TFLINT_VER: "0.17.0"
 
 jobs:
   ## VALIDATION
